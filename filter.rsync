@@ -1,0 +1,14 @@
+- /ntuser.dat*
+- /NTUSER.DAT*
+
+# Exclude all but selected .directories
++ /.auth
++ /.hugin
++ /.php
+- /.*/
+
+# Don't copy those heavy files
+- /Videos
+- /VirtualBox VMs
+- /Downloads
+- /Aufnahmen
