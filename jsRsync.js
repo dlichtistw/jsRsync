@@ -209,28 +209,35 @@ function parseFList (fname) {
 		}
 	}
 	
+	file.Close();
+	
 	return files;
 }
 
-// Such im aktuellen und im Arbeitsverzeichnis nach der Ordnerliste
-function findFList (fname) {
+// Suche im aktuellen und im Arbeitsverzeichnis nach einer Datei
+function findFile (fname) {
 	if (fname) {
-		if (!fs.FileExists(fname)) {
-			if (fs.FileExists(fs.BuildPath(args.working_dir, fname))) {
-				fname = fs.BuildPath(args.working_dir, fname);
-			} else {
-				return false;
-			}
+		if (fs.FileExists(fname)) {
+			return fname;
+		} else if (fs.FileExists(fs.BuildPath(args.working_dir, fname))) {
+			return fs.BuildPath(args.working_dir, fname);
+		} else {
+			return false;
 		}
-		
+	} else {
+		return false;
+	}
+}
+function findFList (fname) {
+	if ((fname = findFile(fname)) === false) {
+		return false;
+	} else {
 		var list = parseFList(fname);
 		if (list !== false && list.length > 0) {
 			return fname;
 		} else {
 			return false;
 		}
-	} else {
-		return false;
 	}
 }
 
@@ -787,20 +794,27 @@ while (!args.backup_base || fs.FolderExists(fs.BuildPath(args.working_dir, args.
 
 // Zusammenfassung erstellen
 var summary = '';
+if (args.dryRun) {
+	summary += '+++++ Achtung: Dies ist ein Probelauf. +++++\n\
++++++ Es werden keine Daten gesichert. +++++\n\n\n';
+}
+
 summary += 'Von folgenden Ordnern wird ein Backup erstellt:\n';
 for (i in flist) {
-	summary += '\t' + flist[i].name + ' (' + flist[i].path + ')\n';
+	summary += '	' + flist[i].name + ' (' + flist[i].path + ')\n';
 }
 summary += '\n';
 
 if (args.diff) {
-	summary += 'Die Dateien werden mit vorhandenen Versionen in ' + fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, args.diff_base)) + ' verglichen.\n';
+	summary += 'Die Dateien werden verglichen mit vorhandenen Versionen in\n\
+	' + fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, args.diff_base)) + '\n';
 } else {
 	summary += 'Es wird eine komplett neue Datensicherung angelegt.\n';
 }
 summary += '\n';
 
-summary += 'Die Sicherung wird in ' + fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, args.backup_base)) + ' angelegt.\n';
+summary += 'Die Sicherung wird in angelegt in\n\
+	' + fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, args.backup_base)) + '\n';
 
 // Zusammenfassung anzeigen und Bestätigung abwarten
 do {
@@ -820,15 +834,15 @@ do {
 	}
 	
 	if (input == 2) {
-		echo('Datensicherung wird abgebrochen. Keine Dateien wurden verändert.');
+		echo('\nDatensicherung wird abgebrochen. Keine Dateien wurden verändert oder gesichert.');
 		WScript.Quit(0);
 	}
 } while (input != 1);
 
 // Anpassen der Parameter für rsync
 filter_param = ' --filter=": filter.rsync"';
-if (fs.FileExists(fs.BuildPath(args.working_dir, 'exclude.rsync'))) {
-	exclude_param = ' --exclude="' + CygWinPath(fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, 'exclude.rsync'))) + '"';
+if ((exFile = findFile('exclude.rsync')) !== false) {
+	exclude_param = ' --exclude="' + CygWinPath(fs.GetAbsolutePathName(exFile)) + '"';
 }
 if (args.diff) {
 	link_param = ' --link-dest="' + CygWinPath(fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, args.diff_base))) + '"';
@@ -859,6 +873,7 @@ for (i in flist) {
 		}
 	} else {
 		echo(flist[i].name + ' (' + flist[i].path + ') wurde nicht gefunden.');
+		flist[i].path = 'Ordner nicht gefunden';
 	}
 	stdOut.WriteBlankLines(2);
 }
@@ -866,37 +881,38 @@ for (i in flist) {
 // Abschlussbericht
 buffer = '';
 if (args.dryRun) {
-	report += buffer;
-	report += '+++++Achtung: Dies war ein Probelauf.+++++\n'
-	report += '+++++Es wurden keine Daten gesichert.+++++\n';
-	buffer = '\n\n';
+	report += buffer + '\
++++++ Achtung: Dies war ein Probelauf. +++++\n\
++++++ Es wurden keine Daten gesichert. +++++\n\
+\n\n';
 }
 
 // Sicherungsobjekte und -ziele
-report += buffer;
+report += buffer + '\
+Folgende Ordner wurden gesichert:\n';
 buffer = '';
-report += 'Folgende Ordner wurden gesichert:\n';
 for (i in flist) {
 	report += '\t' + flist[i].name + ' (' + flist[i].path + ')\n';
 	buffer = '\n';
 }
-report += buffer;
-report += 'Die Daten wurden gesichert in:\n';
-report += '\t' + fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, args.backup_base)) + '\n';
+report += buffer + '\
+Die Daten wurden gesichert in:\n\
+\t' + fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, args.backup_base)) + '\n';
 if (args.diff) {
-	report += 'Als Referenz wurden Dateien in folgendem Ordner genutzt:\n';
-	report += '\t' + fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, args.diff_base)) + '\n';
+	report += 'Als Referenz wurden Dateien in folgendem Ordner genutzt:\n\
+\t' + fs.GetAbsolutePathName(fs.BuildPath(args.working_dir, args.diff_base)) + '\n';
 }
 buffer = '\n\n';
 
 // Zusammenfassende Statistik
 report += buffer
-report += 'Dateien überprüft: \t\t' + stat.fcount + '\n';
-report += 'Dateien übertragen: \t\t' + stat.xcount + '\n';
-report += 'Dateien unverändert: \t' + stat.ucount + '\n';
-report += '\n';
-report += 'Daten überprüft: \t\t' + printFSize(stat.cbcount) + '\n';
-report += 'Daten übertragen: \t\t' + printFSize(stat.xbcount) + '\n';
+report += '\
+Dateien überprüft: \t\t' + stat.fcount + '\n\
+Dateien übertragen: \t\t' + stat.xcount + '\n\
+Dateien unverändert: \t' + stat.ucount + '\n\
+\n\
+Daten überprüft: \t\t' + printFSize(stat.cbcount) + '\n\
+Daten übertragen: \t\t' + printFSize(stat.xbcount) + '\n';
 buffer = '\n\n';
 
 // Informationen über den Sicherungsdatenträger
@@ -908,22 +924,22 @@ try {
 	var as = drive.AvailableSpace;
 	
 	if (dl) {
-		report += buffer;
-		report += 'Sicherungsdatenträger: \t' + dl + ':' + (vn ? ' (' + vn + ')' : '') + '\n';
+		report += buffer + '\
+Sicherungsdatenträger: 	' + dl + ':' + (vn ? ' (' + vn + ')' : '') + '\n';
 		buffer = '';
 	} else if (vn) {
-		report += buffer;
-		report += 'Sicherungsdatenträger: \t' + vn + '\n';
+		report += buffer + '\
+Sicherungsdatenträger: 	' + vn + '\n';
 		buffer = '';
 	}
 	if (ts) {
-		report += buffer;
-		report += 'Datenträgergröße: \t\t' + printFSize(ts) + '\n';
+		report += buffer + '\
+Datenträgergröße: 		' + printFSize(ts) + '\n';
 		buffer = '';
 	}
 	if (as !== undefined) {
-		report += buffer;
-		report += 'Verfügbarer Speicher: \t' + printFSize(as) + (ts ? ' (' + Math.round(100 * (as / ts)) + ' %)' : '') + '\n';
+		report += buffer + '\
+Verfügbarer Speicher: 	' + printFSize(as) + (ts ? ' (' + Math.round(100 * (as / ts)) + ' %)' : '') + '\n';
 		buffer = '';
 	}
 	buffer = '\n\n';
