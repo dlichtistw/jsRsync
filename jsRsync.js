@@ -64,7 +64,7 @@ function showLicense (length) {
 	switch (length) {
 	case 'short':
 		echo('\
-jsRsync  Copyright (C) 2015 David Lichti <dlichtistw@gmx.de>\n\
+jsRsync Copyright (C) 2015 David Lichti <dlichtistw@gmx.de>\n\
 This is free software, and you are welcome to redistribute it under certain\n\
 conditions. This program comes with ABSOLUTELY NO WARRANTY. Use the -l option\n\
 for more details.\n');
@@ -84,7 +84,7 @@ You should have received a copy of the GNU General Public License along with thi
 	}
 }
 
-// Zeigt Hilfe zu Benutzung an
+// Zeigt Hilfe zur Benutzung an
 function showHelp () {
 	echo('\
 Syntax:\n\
@@ -269,11 +269,21 @@ function execute (cmd, pOut, pErr, pIn) {
 	}
 }
 
-// Liest eine Datenmenge ein bzw. stellt sie angenehm dar.
+// Takes a string and tries to parse it as a file size
+// Arguments: str    The string to parse
+// Return: The raw number of bytes if successful, false otherwise
 function parseFSize (str) {
-	if (sm = str.replace(/\s+/, '').match(/(\d+(?:(?:\.|,)(\d+))?)(K|M|G|T)?B?/i)) {
+	if (sm = str.replace(/\s+/, '').match(/(\d+(?:(?:\.|,)(\d+))?)(K|M|G|T|P|E|Z|Y|)B?/i)) {
 		var exp = 0;
-		switch (sm[3].toLowerCase()) { // Für jeden Präfix wird der Exponent von 1024 um 1 erhöht
+		switch (sm[3].toLowerCase()) { // For each prefix, increment the power of 1024
+		case 'y':
+			exp++;
+		case 'z':
+			exp++;
+		case 'e':
+			exp++;
+		case 'p':
+			exp++;
 		case 't':
 			exp++;
 		case 'g':
@@ -282,20 +292,46 @@ function parseFSize (str) {
 			exp++;
 		case 'k':
 			exp++;
+			break;
+		}
+		return Math.round((sm[1].replace(/\.|,/, '') * Math.pow(1024, exp)) / Math.pow(10, sm[2] ? sm[2].length : 0));
+	} else {
+		return false;
+	}
+}
+
+// Takes a number and turns it into a human readable string representation
+// Arguments: val    The number of bytes
+// Return: A string representation of val
+function printFSize (val) {
+	var unit = ['', 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
+	
+	if (val == 0) { // avoid ln(0)
+		return '0 B';
+	} else {
+		var exp = Math.min(Math.floor(Math.log(val) / Math.log(1024)), unit.length - 1); // Gauss-Klammer des 1024-Logarithmus von val
+		return group(Math.round((100 * val) / Math.pow(1024, exp)) / 100) + ' ' + unit[exp] + 'B';
+	}
+}
+
+// Takes a number and separates it in groups of 3 digits
+// Arguments: num    The number
+// Return: A string version of num with spaces inserted
+function group (num) {
+	gp = function (val, rev) {
+		if (rev) { // group from right to left
+			return val.split('').reverse().join('').replace(/\d{3}/g, '$& ').split('').reverse().join('').replace(/^\s+|\s+$/g, '');
+		} else { // group from left to right
+			return val.replace(/\d{3}/g, '$& ').replace(/^\s+|\s+$/g, '');
 		}
 	}
 	
-	return Math.round((sm[1].replace(/\.|,/, '') * Math.pow(1024, exp)) / Math.pow(10, sm[2] ? sm[2].length : 0));
-}
-function printFSize (val) {
-	var unit = ['', 'k', 'M', 'G', 'T'];
-	
-	if (val == 0) { // Vermeide ln(0)
-		return '0 B';
+	str = String(num);
+	if (gm = str.match(/^\s*(\d+)\.(\d+)(e(?:\+|-)?\d+|)\s*$/i)) { // Check for float
+// conf.dec depends on strings.js. Replace appropriatly if necessary
+		return gp(gm[1], true) + '.' + gp(gm[2], false).substr(0, 7) + gm[3];
 	} else {
-		var exp = Math.floor(Math.log(val) / Math.log(1024)); // Gauss-Klammer des 1024-Logarithmus von val
-		var str = String(Math.round((100 * val) / Math.pow(1024, exp)));
-		return str.substr(0, str.length - 2) + '.' + str.substr(str.length - 2) + ' ' + unit[exp] + 'B';
+		return gp(str, true);
 	}
 }
 
@@ -413,7 +449,7 @@ rsync.parseOut = function (out) {
 	switch (this.phase) {
 	case 0:
 		if (/^sending incremental file list$/.test(out)) {
-			echo('\tDateilisten werden verglichen.');
+			echo('   Dateilisten werden verglichen.');
 			break;
 		}
 	case 1:
@@ -426,7 +462,7 @@ rsync.parseOut = function (out) {
 			break;
 		}
 	case 2: // Datenübertragungen
-		var dirExp = new RegExp('^' + this.dir + '(\\.\\w*)?\\/');
+		var dirExp = new RegExp('^' + this.dir + '(\\.\\w*)?\\/', 'i');
 		if (dirExp.test(out)) { // Dies ist höchstwahrscheinlich eine Ausgabezeile über einen Ordner- oder Dateitransfer
 			this.phase = Math.max(this.phase, 2);
 			
@@ -448,12 +484,14 @@ rsync.parseOut = function (out) {
 			echo('Unbekannt: ' + out);
 			break;
 		}
-		if (this.xpending && (xm = out.match(/\s*(\d+(?:\.\d+)?(?:K|M|G|T)?)\s*(\d+\%)\s*(\d+(?:\.\d+)?(?:k|M|G|T)B\/s)\s*(\d+\:\d+\:\d+)\s*\(xfer#(\d+),\s*to-check\=(\d+)\/(\d+)/i))) { // Dateiübertragung
+		if (this.xpending && (xm = out.match(/\s*(\d+(?:\.\d+)?(?:K|M|G|T|P|E|Z|Y|))\s*(\d+\%)\s*(\d+(?:\.\d+)?(?:k|M|G|T|P|E|Z|Y|)B\/s)\s*(\d+\:\d+\:\d+)\s*\(xfr#(\d+),\s*to-chk\=(\d+)\/(\d+)/i))) { // Dateiübertragung
 			this.phase = Math.max(this.phase, 2);
 
 			echo('   ' + fill(compPath(this.last_file, 40), 45, ' ', 1) + ' (' + fill(printFSize(parseFSize(xm[1])), 10, ' ', 1) + ' in ' + xm[4] + ')');
 			this.xcount++;
-			this.xpending = false;
+			if (xm[2] == '100%') {
+				this.xpending = false;
+			}
 			this.xbcount += parseFSize(xm[1]);
 			break;
 		}
@@ -476,7 +514,7 @@ rsync.parseOut = function (out) {
 		if (/^\s*$/.test(out)) {
 			break;
 		}
-		echo('Unbekannt in Phase ' + this.phase + ': ' + out);
+		echo('Unbekannt in Phase ' + this.phase + ':\n' + out);
 		break;
 	}
 }
