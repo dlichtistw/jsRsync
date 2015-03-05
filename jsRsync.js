@@ -1,6 +1,6 @@
 // ****************************************************************************
 //	jsRsync - A JavaScript wrapper for the WSH around the rsync CLI
-//	Copyright (C) 2015  David Lichti <dlichtistw@gmx.de>
+//	Copyright (C) 2015 David Lichti <dlichtistw@gmx.de>
 //	
 //	This program is free software: you can redistribute it and/or modify
 //	it under the terms of the GNU General Public License as published by
@@ -9,7 +9,7 @@
 //	
 //	This program is distributed in the hope that it will be useful,
 //	but WITHOUT ANY WARRANTY; without even the implied warranty of
-//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //	GNU General Public License for more details.
 //	
 //	You should have received a copy of the GNU General Public License
@@ -437,7 +437,7 @@ rsync.where = function () {
 		this.command = 'rsync';
 		return true;
 	} else if (fs.FileExists('rsync\\rsync.exe')) {
-		this.command = fs.GetFullPathName('rsync\\rsync.exe');
+		this.command = fs.GetAbsolutePathName('rsync\\rsync.exe');
 		return true;
 	} else {
 		return false;
@@ -677,7 +677,7 @@ if (args.dryRun) {
 while (rsync.where() == false) {
 	echo('Fehler: rsync wurde nicht gefunden.\n');
 	
-	if (2 == sh.popup('Fü die Durchführung der Datensicherung wird rsync benutzt. Bitte sorgen Sie dafür, dass rsync.exe im Ausführungspfad vorhanden ist.\n\nFür weitere Informationen zur Installation, siehe README und rsync.samba.org.', 0, 'Fehler bei der Datensicherung', 0x5 | 0x10)) {
+	if (2 == sh.popup('Für die Durchführung der Datensicherung wird rsync benutzt. Bitte sorgen Sie dafür, dass rsync.exe im Ausführungspfad vorhanden ist.\n\nFür weitere Informationen zur Installation, siehe README und rsync.samba.org.', 0, 'Fehler bei der Datensicherung', 0x5 | 0x10)) {
 		WScript.Quit(1);
 	}
 }
@@ -752,15 +752,18 @@ while (args.diff && !(args.diff_base && fs.FolderExists(fs.BuildPath(args.workin
 	var folders = new Enumerator(fs.GetFolder(args.working_dir).subFolders);
 	var guess = '';
 	while (!folders.atEnd()) {
-		guess = fs.GetFileName(folders.item());
+		var dFolder = folders.item();
+		if (!(dFolder.Attributes & 7)) { // Nur Ordner ohne Schreibschutz- (1), Versteckt- (2) oder Systembit (4) berücksichtigen
+			guess = dFolder.Name;
 
 // Liste der vorhandenen Ordner im Arbeitsverzeichnis
-		if (buffer) {
-			stdOut.Write(buffer);
-			buffer = '';
+			if (buffer) {
+				stdOut.Write(buffer);
+				buffer = '';
+			}
+			echo('\t' + guess);
 		}
-		echo('\t' + guess);
-		
+			
 		folders.moveNext();
 	}
 	
